@@ -1,0 +1,37 @@
+{
+    "name": "phantom-dex",
+    "private": true,
+    "version": "0.1.0",
+    "workspaces": [
+        "frontend",
+        "relay"
+    ],
+    "scripts": {
+        "build": "npm run build:contracts && npm run build:relay && npm run build:frontend",
+        "build:contracts": "hardhat compile",
+        "test": "hardhat test",
+        "deploy": "hardhat run scripts/deploy.ts --network inEvmTestnet",
+        "deploy:injective": "hardhat run scripts/deploy.ts --network injective_testnet",
+        "verify": "hardhat run scripts/verify.ts --network inEvmTestnet",
+        "rpc-proxy": "node ./scripts/rpc-proxy.mjs",
+        "bundler": "bash ./scripts/run-alto.sh",
+        "bundler:one": "bash ./scripts/start-bundler-stack.sh",
+        "relay": "NODE_OPTIONS=--dns-result-order=ipv4first npm --workspace relay run dev",
+        "dev": "npm --workspace frontend run dev",
+        "build:relay": "npm --workspace relay run build",
+        "build:frontend": "npm --workspace frontend run build"
+    },
+    "devDependencies": {
+        "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+        "@types/node": "^22.10.2",
+        "dotenv": "^16.4.7",
+        "hardhat": "^2.22.17",
+        "ts-node": "^10.9.2",
+        "typescript": "^5.7.2"
+    },
+    "dependencies": {
+        "@account-abstraction/contracts": "^0.7.0",
+        "@openzeppelin/contracts": "^5.2.0",
+        "ethers": "^6.13.4"
+    }
+}

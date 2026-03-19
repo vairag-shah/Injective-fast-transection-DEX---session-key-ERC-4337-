@@ -1,0 +1,1 @@
+{"root":["./src/App.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/hooks/usePriceFeed.ts","./src/hooks/useSessionKey.ts","./src/hooks/useUserOp.ts","./src/lib/contracts.ts","./src/lib/injective.ts","./src/lib/userOp.ts","./src/pages/Portfolio.tsx","./src/pages/Setup.tsx","./src/pages/Terminal.tsx"],"version":"5.9.3"}

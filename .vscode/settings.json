@@ -1,0 +1,9 @@
+{
+    "solidity.packageDefaultDependenciesDirectory": "node_modules",
+    "solidity.packageDefaultDependenciesContractsDirectory": "contracts",
+    "solidity.remappings": [
+        "@openzeppelin/=node_modules/@openzeppelin/",
+        "@account-abstraction/=node_modules/@account-abstraction/"
+    ],
+    "typescript.tsdk": "node_modules/typescript/lib"
+}
