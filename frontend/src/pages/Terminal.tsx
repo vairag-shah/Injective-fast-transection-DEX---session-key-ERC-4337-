@@ -45,30 +45,51 @@ export default function Terminal() {
             return;
         }
 
-        const provider = new ethers.BrowserProvider(eth);
         const qty = Number(qtyText || "0");
-        const result = await submitTrade({
-            eoaProvider: provider,
-            pair,
-            qty,
-            side,
-            sessionPrivateKey: session.privateKey
-        });
-
-        const item: TradeFeedItem = {
+        
+        // ✅ Optimistic update: show as pending immediately
+        const optimisticItem: TradeFeedItem = {
             side: side === 0 ? "BUY" : "SELL",
             qty,
             price: midPrice,
             ts: Date.now(),
-            status: result.txHash ? "confirmed" : "pending"
+            status: "pending"
         };
-
+        
         setTradesToday((x) => x + 1);
-        setFeed((prev) => [item, ...prev].slice(0, 8));
+        setFeed((prev) => [optimisticItem, ...prev].slice(0, 8));
+        
+        if (side === 0) setBuyQty("");
+        else setSellQty("");
 
-        const history = JSON.parse(sessionStorage.getItem("phantom_trade_history") || "[]");
-        history.unshift({ ...item, pair, txHash: result.txHash, gas: 0 });
-        sessionStorage.setItem("phantom_trade_history", JSON.stringify(history.slice(0, 100)));
+        try {
+            const provider = new ethers.BrowserProvider(eth);
+            const result = await submitTrade({
+                eoaProvider: provider,
+                pair,
+                qty,
+                side,
+                sessionPrivateKey: session.privateKey
+            });
+
+            // ✅ Update optimistic item with confirmed status
+            setFeed((prev) =>
+                prev.map((item) =>
+                    item.ts === optimisticItem.ts ? { ...item, status: "confirmed" as const } : item
+                )
+            );
+
+            const history = JSON.parse(sessionStorage.getItem("phantom_trade_history") || "[]");
+            history.unshift({ ...optimisticItem, pair, txHash: result.txHash, gas: 0 });
+            sessionStorage.setItem("phantom_trade_history", JSON.stringify(history.slice(0, 100)));
+        } catch (err) {
+            console.error("Trade failed:", err);
+            // ✅ Mark as failed instead of pending
+            setFeed((prev) =>
+                prev.filter((item) => item.ts !== optimisticItem.ts)
+            );
+            alert(`Trade failed: ${err}`);
+        }
     }
 
     return (
@@ -118,6 +139,7 @@ export default function Terminal() {
                     colorClass="text-accent"
                     onSubmit={() => runTrade(0, buyQty)}
                     pending={pending}
+                    disabled={!session || pending}
                 />
                 <TradePanel
                     side="SELL"
@@ -128,6 +150,7 @@ export default function Terminal() {
                     colorClass="text-danger"
                     onSubmit={() => runTrade(1, sellQty)}
                     pending={pending}
+                    disabled={!session || pending}
                 />
             </section>
 
@@ -169,6 +192,7 @@ function TradePanel(props: {
     colorClass: string;
     onSubmit: () => void;
     pending: boolean;
+    disabled?: boolean;
 }) {
     return (
         <div className="panel p-4">
@@ -177,12 +201,26 @@ function TradePanel(props: {
             <input
                 value={props.amount}
                 onChange={(e) => props.onAmount(e.target.value)}
-                className="mt-2 w-full rounded-lg border border-white/20 bg-black/30 px-3 py-2 font-mono"
+                disabled={props.disabled || props.pending}
+                className="mt-2 w-full rounded-lg border border-white/20 bg-black/30 px-3 py-2 font-mono disabled:opacity-50"
             />
             <p className="mt-2 text-sm text-slate-300">USDT estimate: <span className="font-mono">{Number(props.estimate).toFixed(2)}</span></p>
-            <button onClick={props.onSubmit} disabled={props.pending} className="mt-4 w-full rounded-lg border border-white/20 bg-black/30 px-3 py-2 font-semibold">
-                {props.buttonLabel}
-                <span className="ml-2 rounded bg-accent/20 px-2 py-0.5 text-xs text-accent">no popup</span>
+            <button 
+                onClick={props.onSubmit} 
+                disabled={props.disabled || props.pending} 
+                className="mt-4 w-full rounded-lg border border-white/20 bg-black/30 px-3 py-2 font-semibold disabled:opacity-50 transition-opacity"
+            >
+                {props.pending ? (
+                    <>
+                        <span className="inline-block animate-spin mr-2">⟳</span>
+                        Processing...
+                    </>
+                ) : (
+                    <>
+                        {props.buttonLabel}
+                        <span className="ml-2 rounded bg-accent/20 px-2 py-0.5 text-xs text-accent">no popup</span>
+                    </>
+                )}
             </button>
         </div>
     );

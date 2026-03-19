@@ -62,11 +62,12 @@ export function useUserOp() {
             let status = "pending";
             let txHash: string | null = null;
 
-            for (let i = 0; i < 30 && status !== "confirmed"; i++) {
-                await new Promise((r) => setTimeout(r, 2000));
+            for (let i = 0; i < 60 && status !== "confirmed"; i++) {
+                await new Promise((r) => setTimeout(r, 500));
                 const polled = await pollOrderStatus(submitted.userOpHash);
                 status = polled.status;
                 txHash = polled.txHash;
+                if (status === "confirmed") break;
             }
 
             return { userOpHash: submitted.userOpHash, txHash };

@@ -69,10 +69,18 @@ export async function sendUserOperation(userOp: any): Promise<string> {
     );
 
     console.log("Tx sent:", tx.hash);
-    const receipt = await tx.wait();
-    console.log("Confirmed:", receipt!.hash);
+    
+    // ✅ Return hash immediately, don't wait for confirmation
+    // Frontend will poll for confirmation separately
+    setImmediate(() => {
+        tx.wait().then((receipt) => {
+            console.log("Confirmed:", receipt?.hash);
+        }).catch((err) => {
+            console.error("Tx failed:", err);
+        });
+    });
 
-    return receipt!.hash;
+    return tx.hash;
 }
 
 export async function getUserOperationReceipt(hash: string) {
