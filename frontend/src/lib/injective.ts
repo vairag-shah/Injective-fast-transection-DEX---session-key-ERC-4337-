@@ -18,7 +18,16 @@ export async function submitUserOp(userOp: unknown) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(userOp)
     });
-    if (!res.ok) throw new Error("submit failed");
+    if (!res.ok) {
+        let detail = "submit failed";
+        try {
+            const body = await res.json();
+            detail = body?.error || detail;
+        } catch {
+            // ignore parse errors and keep default message
+        }
+        throw new Error(detail);
+    }
     return res.json() as Promise<{ userOpHash: string }>;
 }
 

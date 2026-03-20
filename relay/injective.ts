@@ -12,6 +12,22 @@ const RELAY_PK = process.env.RELAY_PRIVATE_KEY || "";
 const INJECTIVE_REST_ENDPOINT =
     process.env.INJECTIVE_REST_ENDPOINT ||
     "https://testnet.sentry.lcd.injective.network";
+const INJECTIVE_GRPC_FALLBACKS = Array.from(
+    new Set(
+        [
+            process.env.INJECTIVE_GRPC_ENDPOINT,
+            "https://testnet.sentry.chain.grpc-web.injective.network"
+        ].filter((x): x is string => Boolean(x && x.trim()))
+    )
+);
+const INJECTIVE_REST_FALLBACKS = Array.from(
+    new Set(
+        [
+            process.env.INJECTIVE_REST_ENDPOINT,
+            "https://testnet.sentry.lcd.injective.network"
+        ].filter((x): x is string => Boolean(x && x.trim()))
+    )
+);
 
 const indexer = new IndexerGrpcSpotApi(INDEXER_ENDPOINT);
 
@@ -87,6 +103,13 @@ export async function routeInjectiveSpotOrder(args: {
     qty: string;
     side: number;
 }): Promise<{ txHash: string }> {
+    if (!INJECTIVE_GRPC_FALLBACKS.length) {
+        throw new Error("No Injective gRPC endpoint configured");
+    }
+    if (!INJECTIVE_REST_FALLBACKS.length) {
+        throw new Error("No Injective REST endpoint configured");
+    }
+
     const markets = await fetchMarketIds();
     const marketId = markets[args.pair];
     if (!marketId) {
@@ -99,31 +122,46 @@ export async function routeInjectiveSpotOrder(args: {
     const privateKey = PrivateKey.fromHex(RELAY_PK);
     const injectiveAddress = privateKey.toBech32();
 
-    const authApi = new ChainGrpcAuthApi(INDEXER_ENDPOINT);
-    const account = await authApi.fetchAccount(injectiveAddress);
+    let lastError: unknown = null;
 
-    const broadcaster = new MsgBroadcasterWithPk({
-        privateKey,
-        network: INJECTIVE_NETWORK as any,
-        endpoints: {
-            indexer: INDEXER_ENDPOINT,
-            grpc: INDEXER_ENDPOINT,
-            rest: INJECTIVE_REST_ENDPOINT
+    for (const grpcEndpoint of INJECTIVE_GRPC_FALLBACKS) {
+        for (const restEndpoint of INJECTIVE_REST_FALLBACKS) {
+            try {
+                const authApi = new ChainGrpcAuthApi(grpcEndpoint);
+                await authApi.fetchAccount(injectiveAddress);
+
+                const broadcaster = new MsgBroadcasterWithPk({
+                    privateKey,
+                    network: INJECTIVE_NETWORK as any,
+                    endpoints: {
+                        indexer: grpcEndpoint,
+                        grpc: grpcEndpoint,
+                        rest: restEndpoint
+                    }
+                });
+
+                const msg = MsgCreateSpotMarketOrder.fromJSON({
+                    subaccountId: injectiveAddress,
+                    feeRecipient: injectiveAddress,
+                    orderType: (args.side === 0 ? 1 : 2) as any,
+                    marketId,
+                    price: "0",
+                    quantity: args.qty,
+                    cid: `phantom-${Date.now()}`,
+                    injectiveAddress
+                });
+
+                const tx: any = await broadcaster.broadcast({ msgs: [msg] });
+                return { txHash: tx?.txHash || "" };
+            } catch (err: unknown) {
+                lastError = err;
+                const msg = err instanceof Error ? err.message : String(err);
+                console.warn(`Injective route endpoint failed (grpc=${grpcEndpoint}, rest=${restEndpoint}): ${msg}`);
+            }
         }
-    });
+    }
 
-    const msg = MsgCreateSpotMarketOrder.fromJSON({
-        subaccountId: injectiveAddress,
-        feeRecipient: injectiveAddress,
-        orderType: (args.side === 0 ? 1 : 2) as any,
-        marketId,
-        price: "0",
-        quantity: args.qty,
-        cid: `phantom-${Date.now()}`,
-        injectiveAddress
-    });
-
-    const tx: any = await broadcaster.broadcast({ msgs: [msg] });
-
-    return { txHash: tx?.txHash || "" };
+    throw new Error(
+        `Injective route failed across endpoints: ${lastError instanceof Error ? lastError.message : String(lastError)}`
+    );
 }

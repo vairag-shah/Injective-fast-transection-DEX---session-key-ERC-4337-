@@ -4,7 +4,7 @@ dotenv.config({ path: "../.env" });
 
 const vaultAbi = [
     "event TradeRequested(address user, bytes32 pair, uint256 qty, uint8 side, uint256 timestamp)",
-    "function settleTradeRecord(address user, bytes32 pair, uint256 qty, uint8 side, string txHash)"
+    "function settleTradeAndPayout(address user, bytes32 pair, uint256 qty, uint8 side, string txHash)"
 ];
 
 export type TradeRequestedPayload = {
@@ -14,8 +14,6 @@ export type TradeRequestedPayload = {
     side: number;
 };
 
-// ✅ Create provider with static network — skips auto network detection
-// which was triggering IPv6 connection attempts on startup
 function createHttpProvider(rpcUrl: string): ethers.JsonRpcProvider {
     return new ethers.JsonRpcProvider(
         rpcUrl,
@@ -24,36 +22,74 @@ function createHttpProvider(rpcUrl: string): ethers.JsonRpcProvider {
             name: "injective-testnet"
         },
         {
-            staticNetwork: true,        // ← skips eth_chainId call on boot
-            polling: true,              // ← use polling not WebSocket
-            pollingInterval: 4000,      // ← poll every 4 seconds
+            staticNetwork: true,
+            polling: true,
+            pollingInterval: 4000,
         }
     );
 }
 
-export function startVaultListener(
+async function selectHealthyProvider(): Promise<{ provider: ethers.JsonRpcProvider; rpcUrl: string }> {
+    const rpcCandidates = Array.from(
+        new Set(
+            [
+                process.env.RPC_PROXY_URL,
+                process.env.RELAY_RPC_URL,
+                process.env.INEVM_RPC_URL,
+                "https://k8s.testnet.json-rpc.injective.network/"
+            ].filter((x): x is string => Boolean(x && x.trim()))
+        )
+    );
+
+    let lastError: unknown = null;
+    for (const rpcUrl of rpcCandidates) {
+        try {
+            const provider = createHttpProvider(rpcUrl);
+            await provider.getBlockNumber();
+            return { provider, rpcUrl };
+        } catch (err: unknown) {
+            lastError = err;
+            const msg = err instanceof Error ? err.message : String(err);
+            console.warn(`Listener RPC probe failed (${rpcUrl}): ${msg}`);
+        }
+    }
+
+    const endpoints = rpcCandidates.join(", ");
+    throw new Error(
+        `No healthy listener RPC endpoint. Tried: [${endpoints}]. Last error: ${lastError instanceof Error ? lastError.message : String(lastError)}. Start local proxy with: npm run rpc-proxy`
+    );
+}
+
+export async function startVaultListener(
     _wsRpcUrl: string,
     vaultAddress: string,
     onTradeRequested: (payload: TradeRequestedPayload) => Promise<void>
 ) {
-    const rpcUrl =
-        process.env.RELAY_RPC_URL ||
-        process.env.RPC_PROXY_URL ||
-        process.env.INEVM_RPC_URL!;
+    const { provider, rpcUrl } = await selectHealthyProvider();
     console.log(`Event listener using HTTP polling → ${rpcUrl}`);
 
-    const provider = createHttpProvider(rpcUrl);
-
     const vault = new ethers.Contract(vaultAddress, vaultAbi, provider);
-
+    const seenEvents = new Set<string>();
     vault.on(
         "TradeRequested",
         async (
             user: string,
             pair: string,
             qty: bigint,
-            side: bigint
+            side: bigint,
+            event: any
         ) => {
+            const eventId = event?.log?.transactionHash && typeof event?.logIndex === "number"
+                ? `${event.log.transactionHash}:${event.logIndex}`
+                : event?.transactionHash && typeof event?.index === "number"
+                    ? `${event.transactionHash}:${event.index}`
+                    : `${user}:${pair}:${qty.toString()}:${Number(side)}:${event?.blockNumber || "na"}`;
+            if (seenEvents.has(eventId)) {
+                return;
+            }
+            seenEvents.add(eventId);
+            setTimeout(() => seenEvents.delete(eventId), 10 * 60 * 1000);
+
             console.log(`TradeRequested → ${user} side:${Number(side) === 0 ? "BUY" : "SELL"}`);
             try {
                 await onTradeRequested({
@@ -69,7 +105,6 @@ export function startVaultListener(
     );
 
     console.log(`Listening for events on vault: ${vaultAddress}`);
-
     return { provider, vault };
 }
 

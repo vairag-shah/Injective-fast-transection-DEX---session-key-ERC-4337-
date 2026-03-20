@@ -328,7 +328,7 @@ Environment files (`.env`) store sensitive information like private keys and API
 - **ONLY** used locally for development
 - **MUST** have restricted permissions (chmod 600)
 
-### Backend .env File (`/phantom-dex/.env`)
+### Root Backend .env File (`/phantom-dex/.env`)
 
 Create `.env` in the root `phantom-dex` directory:
 
@@ -344,102 +344,95 @@ chmod 600 .env
 
 ```env
 # ============================================================
-# NETWORK & RPC CONFIGURATION
+# INJECTIVE EVM TESTNET CONFIGURATION (Chain 1439)
 # ============================================================
 
-# Injective EVM Testnet (Chain 1439)
-# Primary RPC endpoint (HTTP)
-INJECTIVE_RPC_URL=https://k8s.testnet.json-rpc.injective.network/
+# Primary RPC endpoint for Injective EVM testnet
+INEVM_RPC_URL=https://k8s.testnet.json-rpc.injective.network
+INEVM_CHAIN_ID=1439
 
-# WebSocket endpoint for real-time events
-INJECTIVE_WS_URL=wss://k8s.testnet.ws.injective.network/
+# WebSocket endpoint for real-time event listening
+WS_RPC_URL=wss://k8s.testnet.ws.injective.network/
 
-# Cosmos gRPC endpoint
-COSMOS_GRPC_URL=https://testnet.sentry.chain.grpc-web.injective.network
-
-# Local RPC proxy (used if Node.js DNS resolution fails)
-# Set this to http://127.0.0.1:8547 if running local RPC proxy
-# Otherwise, leave as primary RPC URL
+# Local RPC proxy (optional - used if Node.js DNS resolution fails)
 RPC_PROXY_URL=http://127.0.0.1:8547
 
 # ============================================================
-# CONTRACT DEPLOYMENT & ADDRESSES
+# INJECTIVE COSMOS LAYER CONFIGURATION
 # ============================================================
 
-# Deployer private key (NEVER commit this to Git!)
-# This account deploys contracts and pays for deployment gas
-PRIVATE_KEY=0xf5bb7ae33effb31855a427fdad8ab7b379c50f2b27c2c2714b84e4b841c6fd29
+# Injective testnet network identifier
+INJECTIVE_NETWORK=testnet
 
-# Deployed contract addresses (will be populated after deployment)
-VAULT_CONTRACT=0xeC40c0792ade222b85dc231fD820346Bcd379617
-SESSION_KEY_CONTRACT=0xB81B7E518F5370c80128407008245722D40AD2A5
-PAYMASTER_CONTRACT=0x182c418e94215820D3B1F63B00e8420c39795D68
+# Injective gRPC endpoint (for spot market orders)
+INJECTIVE_GRPC_ENDPOINT=https://testnet.sentry.chain.grpc-web.injective.network
+
+# ============================================================
+# ERC-4337 BUNDLER CONFIGURATION
+# ============================================================
+
+# Pimlico bundler API key (for production; use 'local' for self-hosted Alto)
+PIMLICO_API_KEY=local
+
+# Self-hosted Alto ERC-4337 bundler URL
+PIMLICO_BUNDLER_URL=http://localhost:4337
+
+# ============================================================
+# PRIVATE KEYS (⚠️ NEVER COMMIT - USE .gitignore ⚠️)
+# ============================================================
+
+# Relay private key for Injective wallet (broadcasts orders)
+# Used by: relay/injective.ts for MsgCreateSpotMarketOrder signing
+RELAY_PRIVATE_KEY=[REDACTED - Store securely]
+
+# Deployer private key for EVM contract deployment
+# Used by: hardhat.config.ts and scripts/deploy.ts
+DEPLOYER_PRIVATE_KEY=[REDACTED - Store securely]
+
+# Relay signer EVM private key (calls settleTradeAndPayout on Vault)
+# Used by: relay/index.ts for settlement transactions
+RELAY_SIGNER_EVM_PRIVATE_KEY=[REDACTED - Store securely]
+
+# ============================================================
+# DEPLOYED CONTRACT ADDRESSES (Injective EVM Testnet)
+# ============================================================
+
+# Smart Account Factory - creates new smart accounts for users
 SMART_ACCOUNT_FACTORY=0xc4e6596a6f2eE02127298a8D90d854b7D270877a
-MOCK_USDT=0x0E6dCDa85951220C35838c2Fb162f0251513678C
 
-# ============================================================
-# ERC-4337 INFRASTRUCTURE
-# ============================================================
+# Session Key Contract - manages time-limited trading keys
+SESSION_KEY_CONTRACT=0xB81B7E518F5370c80128407008245722D40AD2A5
 
-# EntryPoint address (standard ERC-4337)
-# This is the same across all ERC-4337 chains
-ENTRY_POINT=0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789
+# Vault Contract - holds user deposits and orchestrates trades
+VAULT_CONTRACT=0xA8DCa70304cAc4B70bF02277c283Db09aBFdC586
 
-# Alto bundler endpoint (runs locally)
-BUNDLER_URL=http://127.0.0.1:4337
+# Paymaster Contract - sponsors gas for whitelisted transactions
+PAYMASTER_CONTRACT=0x182c418e94215820D3B1F63B00e8420c39795D68
+
+# EntryPoint Contract (ERC-4337 standard)
+ENTRYPOINT=0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789
 
 # ============================================================
 # RELAY SERVICE CONFIGURATION
 # ============================================================
 
-# Relay service port
-RELAY_PORT=8787
-
-# Private key for relay service (settles trades on-chain)
-# Should be a dedicated account, not an EOA you use for trading
-RELAY_PRIVATE_KEY=0x0987654321098765432109876543210987654321098765432109876543210987
-
-# Vault contract address (relay uses this to call settleTradeRecord)
-VAULT_ADDRESS=${VAULT_CONTRACT}
+# Port for relay HTTP API server
+PORT=8787
 
 # ============================================================
-# CHAINLINK / PRICE ORACLE (Optional)
+# EXAMPLE ENVIRONMENT VARIABLES
 # ============================================================
 
-# If implementing price feeds, add Chainlink endpoints here
-# CHAINLINK_PRICE_FEED_ADDRESS=0x...
-# CHAINLINK_REGISTRY_ADDRESS=0x...
-
-# ============================================================
-# LOGGING & DEBUG (Optional)
-# ============================================================
-
-# Log level: 'debug' | 'info' | 'warn' | 'error'
-LOG_LEVEL=info
-
-# ============================================================
-# NOTES
-# ============================================================
-
-# 1. PRIVATE_KEY: This is the account that deploys contracts.
-#    Used in hardhat.config.ts via ethers.Wallet.
-#    ALWAYS rotate this key after testnet completion.
-#    DO NOT use your main wallet's key here.
-#
-# 2. RELAY_PRIVATE_KEY: This is used by the relay service to call
-#    Vault.settleTradeRecord(). Should be a separate account.
-#
-# 3. RPC endpoints can be tested with:
-#    curl -X POST -H "Content-Type: application/json" \
-#      -d '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' \
-#      https://k8s.testnet.json-rpc.injective.network/
-#
-# 4. Chain ID 1439 (0x59f in hex) confirms you're on testnet.
-#
-# 5. If you see ETIMEDOUT or ENETUNREACH errors, you may need:
-#    export NODE_OPTIONS=--dns-result-order=ipv4first
-#    This forces IPv4 DNS resolution, fixing certain host environments.
+# These are placeholder values - replace with your actual private keys:
+# • Never share your RELAY_PRIVATE_KEY (Injective account)
+# • Never share your DEPLOYER_PRIVATE_KEY (EVM account)
+# • Never share your RELAY_SIGNER_EVM_PRIVATE_KEY (EVM settlement account)
+# • Always use .gitignore to prevent accidental commits
 ```
+
+### Relay Service .env File (`/phantom-dex/relay/.env`)
+
+The relay shares the root `.env` file. No separate relay/.env needed.
 
 ### Frontend .env File (`/phantom-dex/frontend/.env`)
 
@@ -455,61 +448,86 @@ chmod 600 frontend/.env
 
 ```env
 # ============================================================
-# FRONTEND CONFIGURATION
+# FRONTEND VITE CONFIGURATION
 # ============================================================
 
-# Injective Testnet RPC
-VITE_RPC_URL=https://k8s.testnet.json-rpc.injective.network/
-VITE_CHAIN_ID=1439
-VITE_CHAIN_NAME=Injective Testnet
-
-# Contract addresses (match backend .env values)
-VITE_VAULT_CONTRACT=0xeC40c0792ade222b85dc231fD820346Bcd379617
+# Contract Addresses - MUST match deployed addresses in backend .env
+VITE_ENTRYPOINT=0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789
+VITE_VAULT_CONTRACT=0xA8DCa70304cAc4B70bF02277c283Db09aBFdC586
 VITE_SESSION_KEY_CONTRACT=0xB81B7E518F5370c80128407008245722D40AD2A5
-VITE_PAYMASTER_CONTRACT=0x182c418e94215820D3B1F63B00e8420c39795D68
 VITE_SMART_ACCOUNT_FACTORY=0xc4e6596a6f2eE02127298a8D90d854b7D270877a
-
-# Test token (ERC-20)
-VITE_USDT_TOKEN=0x0E6dCDa85951220C35838c2Fb162f0251513678C
-
-# ERC-4337 EntryPoint
-VITE_ENTRY_POINT=0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789
-
-# Backend relay API
-VITE_RELAY_API=http://127.0.0.1:8787
-
-# Frontend dev server port
-VITE_PORT=5173
+VITE_PAYMASTER_CONTRACT=0x182c418e94215820D3B1F63B00e8420c39795D68
 
 # ============================================================
-# NOTES
+# RPC & CHAIN CONFIGURATION
 # ============================================================
 
-# 1. VITE_ prefix tells Vite to inject these into the frontend at build time.
-#    Access in React via: `import.meta.env.VITE_RPC_URL`
+# Injective Testnet RPC URL
+VITE_RPC_URL=https://k8s.testnet.json-rpc.injective.network
+
+# Chain ID for Injective EVM Testnet
+VITE_CHAIN_ID=1439
+
+# ============================================================
+# RELAY API CONFIGURATION
+# ============================================================
+
+# Backend relay service URL (for trade submission and status polling)
+VITE_RELAY_URL=http://localhost:8787
+
+# ============================================================
+# TOKEN CONFIGURATION
+# ============================================================
+
+# Test USDT token on Injective EVM testnet (optional)
+# Leave empty if not using ERC-20 deposits
+VITE_USDT_TOKEN=
+
+# ============================================================
+# NOTES FOR DEVELOPERS
+# ============================================================
+
+# 1. VITE_ prefix: All variables are injected at build time by Vite
+#    Access in React: import.meta.env.VITE_RPC_URL
 #
-# 2. All contract addresses should match .env values in backend.
-#    If you redeploy a contract, update both .env files AND frontend/.env.
+# 2. Keep addresses in sync: Update both .env and frontend/.env when redeploying
 #
-# 3. VITE_RELAY_API must match RELAY_PORT from backend .env.
-#    Default is http://127.0.0.1:8787
+# 3. Local development: Create frontend/.env.local to override values
+#    (never commit .env.local to git)
 #
-# 4. In development, .env.local can override these, but don't commit it.
+# 4. No private keys in frontend .env: These values are public (injected in bundle)
 ```
 
-### .env.local Overrides (Optional)
+### Environment Variables Reference
 
-For local development, you can create `.env.local` to override values without modifying `.env`:
+| Variable | Purpose | Example |
+|----------|---------|---------|
+| `INEVM_RPC_URL` | EVM testnet RPC | `https://k8s.testnet.json-rpc.injective.network` |
+| `WS_RPC_URL` | WebSocket for events | `wss://k8s.testnet.ws.injective.network` |
+| `INJECTIVE_GRPC_ENDPOINT` | Cosmos order broadcasting | `https://testnet.sentry.chain.grpc-web.injective.network` |
+| `RELAY_PRIVATE_KEY` | Injective keypair for orders | *[Private - do not share]* |
+| `DEPLOYER_PRIVATE_KEY` | EVM account for contract deploy | *[Private - do not share]* |
+| `RELAY_SIGNER_EVM_PRIVATE_KEY` | EVM account for settlements | *[Private - do not share]* |
+| `VAULT_CONTRACT` | Escrow contract on EVM | `0xA8DCa7...86A` |
+| `ENTRYPOINT` | ERC-4337 entry point | `0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789` |
+| `PIMLICO_BUNDLER_URL` | UserOp bundler | `http://localhost:4337` |
+| `PORT` | Relay API port | `8787` |
 
-**Example:** `frontend/.env.local`
+### Security Checklist
 
-```env
-# Use local Alto bundler instead of production
-VITE_BUNDLER_URL=http://127.0.0.1:4337
+✅ **DO:**
+- Use `.gitignore` to prevent committing `.env` files
+- Rotate private keys after testnet demos
+- Use different keys for deployer, relay, and signer
+- Set file permissions: `chmod 600 .env`
+- Store keys in a secrets manager for production
 
-# Use local RPC proxy if primary RPC is slow
-VITE_RPC_URL=http://127.0.0.1:8547
-```
+❌ **DON'T:**
+- Commit `.env` files to version control
+- Share private keys via email, Slack, or chat
+- Use the same key for multiple purposes
+- Reuse keys across different projects
+- Store keys in plaintext in code comments
 
 ---
 

@@ -4,6 +4,7 @@ import { useSessionKey } from "../hooks/useSessionKey";
 import { usePriceFeed } from "../hooks/usePriceFeed";
 import { useUserOp } from "../hooks/useUserOp";
 import { pollOrderStatus } from "../lib/injective";
+import { VAULT_ADDRESS, vaultAbi } from "../lib/contracts";
 
 type TradeFeedItem = {
     side: "BUY" | "SELL";
@@ -17,8 +18,6 @@ type TradeFeedItem = {
 const PAIRS = ["INJ/USDT", "ETH/USDT", "BTC/USDT"];
 const TX_EXPLORER_BASE =
     import.meta.env.VITE_TX_EXPLORER_BASE || "https://testnet.blockscout.injective.network/tx";
-const TERMINAL_FEED_KEY = "phantom_terminal_feed";
-const TERMINAL_TRADES_TODAY_KEY = "phantom_terminal_trades_today";
 
 export default function Terminal() {
     const { session, remainingText } = useSessionKey();
@@ -28,38 +27,10 @@ export default function Terminal() {
     const [feed, setFeed] = useState<TradeFeedItem[]>([]);
     const [tradesToday, setTradesToday] = useState(0);
     const [activeSide, setActiveSide] = useState<"BUY" | "SELL" | null>(null);
+    const [vaultBalance, setVaultBalance] = useState(0);
 
     const { prices, midPrice, change24h } = usePriceFeed(pair);
     const { pending, submitTrade } = useUserOp();
-
-    useEffect(() => {
-        const rawFeed = sessionStorage.getItem(TERMINAL_FEED_KEY);
-        const rawTrades = sessionStorage.getItem(TERMINAL_TRADES_TODAY_KEY);
-
-        if (rawFeed) {
-            try {
-                const parsed = JSON.parse(rawFeed) as TradeFeedItem[];
-                if (Array.isArray(parsed)) setFeed(parsed.slice(0, 8));
-            } catch {
-                sessionStorage.removeItem(TERMINAL_FEED_KEY);
-            }
-        }
-
-        if (rawTrades) {
-            const parsedTrades = Number(rawTrades);
-            if (Number.isFinite(parsedTrades) && parsedTrades >= 0) {
-                setTradesToday(parsedTrades);
-            }
-        }
-    }, []);
-
-    useEffect(() => {
-        sessionStorage.setItem(TERMINAL_FEED_KEY, JSON.stringify(feed.slice(0, 8)));
-    }, [feed]);
-
-    useEffect(() => {
-        sessionStorage.setItem(TERMINAL_TRADES_TODAY_KEY, String(tradesToday));
-    }, [tradesToday]);
 
     const sparkline = useMemo(() => {
         if (!prices.length) return "";
@@ -73,6 +44,30 @@ export default function Terminal() {
             })
             .join(" ");
     }, [prices]);
+
+    async function refreshVaultBalance() {
+        const eth = (window as any).ethereum;
+        if (!eth || !VAULT_ADDRESS) return;
+
+        try {
+            const provider = new ethers.BrowserProvider(eth);
+            const signer = await provider.getSigner();
+            const owner = await signer.getAddress();
+            const vault = new ethers.Contract(VAULT_ADDRESS, vaultAbi, provider);
+            const bal: bigint = await vault.getBalance(owner, ethers.ZeroAddress);
+            setVaultBalance(Number(ethers.formatEther(bal)));
+        } catch {
+            // ignore temporary RPC/wallet issues in UI
+        }
+    }
+
+    useEffect(() => {
+        void refreshVaultBalance();
+        const id = setInterval(() => {
+            void refreshVaultBalance();
+        }, 6000);
+        return () => clearInterval(id);
+    }, []);
 
     async function confirmInBackground(hash: string, ts: number, tradePair: string) {
         for (let i = 0; i < 30; i++) {
@@ -112,6 +107,14 @@ export default function Terminal() {
         }
 
         const qty = Number(qtyText || "0");
+        if (!Number.isFinite(qty) || qty <= 0) {
+            alert("Enter a valid amount");
+            return;
+        }
+        if (qty > vaultBalance) {
+            alert(`Insufficient vault balance. Available: ${vaultBalance.toFixed(4)} INJ`);
+            return;
+        }
 
         // ✅ Optimistic update: show as pending immediately
         const optimisticItem: TradeFeedItem = {
@@ -168,6 +171,8 @@ export default function Terminal() {
             if (immediateStatus !== "confirmed") {
                 void confirmInBackground(result.userOpHash, optimisticItem.ts, pair);
             }
+
+            void refreshVaultBalance();
         } catch (err) {
             console.error("Trade failed:", err);
             // ✅ Mark as failed instead of pending
@@ -198,7 +203,7 @@ export default function Terminal() {
                 <StatCard label="Live price" value={midPrice.toFixed(4)} valueClass="text-accent" />
                 <StatCard label="24h change" value={`${change24h.toFixed(4)}%`} valueClass={change24h >= 0 ? "text-accent" : "text-danger"} />
                 <StatCard label="Gas paid" value="$0.00" valueClass="text-accent" />
-                <StatCard label="Trades today" value={String(tradesToday)} valueClass="text-slate-100" />
+                <StatCard label="Vault INJ" value={vaultBalance.toFixed(4)} valueClass="text-slate-100" />
             </section>
 
             <section className="panel p-4">

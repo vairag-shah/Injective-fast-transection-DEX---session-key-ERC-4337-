@@ -40,7 +40,7 @@ export function useUserOp() {
             const tradeData = vaultInterface.encodeFunctionData("executeTrade", [
                 owner,
                 pairHash,
-                ethers.parseUnits(params.qty.toString(), 6),
+                ethers.parseUnits(params.qty.toString(), 18),
                 params.side
             ]);
 
@@ -59,7 +59,13 @@ export function useUserOp() {
             const signature = await wallet.signMessage(ethers.getBytes(digest));
             userOp.signature = signature;
 
-            const submitted = await submitUserOp(userOp);
+            const submitted = await submitUserOp({
+                ...userOp,
+                user: owner,
+                pair: params.pair,
+                qty: params.qty.toString(),
+                side: params.side
+            });
             let status: "pending" | "confirmed" = "pending";
             let txHash: string | null = null;
 

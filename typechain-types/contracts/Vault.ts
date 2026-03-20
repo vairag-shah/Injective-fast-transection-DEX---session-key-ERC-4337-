@@ -35,6 +35,7 @@ export interface VaultInterface extends Interface {
       | "relay"
       | "setApprovedSmartAccount"
       | "setRelay"
+      | "settleTradeAndPayout"
       | "settleTradeRecord"
       | "transferOwnership"
       | "withdraw"
@@ -43,8 +44,10 @@ export interface VaultInterface extends Interface {
 
   getEvent(
     nameOrSignatureOrTopic:
+      | "BalanceDebited"
       | "Deposit"
       | "OwnershipTransferred"
+      | "TradePayout"
       | "TradeRequested"
       | "TradeSettled"
   ): EventFragment;
@@ -78,6 +81,10 @@ export interface VaultInterface extends Interface {
   encodeFunctionData(
     functionFragment: "setRelay",
     values: [AddressLike]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "settleTradeAndPayout",
+    values: [AddressLike, BytesLike, BigNumberish, BigNumberish, string]
   ): string;
   encodeFunctionData(
     functionFragment: "settleTradeRecord",
@@ -118,6 +125,10 @@ export interface VaultInterface extends Interface {
   ): Result;
   decodeFunctionResult(functionFragment: "setRelay", data: BytesLike): Result;
   decodeFunctionResult(
+    functionFragment: "settleTradeAndPayout",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
     functionFragment: "settleTradeRecord",
     data: BytesLike
   ): Result;
@@ -130,6 +141,28 @@ export interface VaultInterface extends Interface {
     functionFragment: "withdrawNative",
     data: BytesLike
   ): Result;
+}
+
+export namespace BalanceDebitedEvent {
+  export type InputTuple = [
+    user: AddressLike,
+    amount: BigNumberish,
+    balanceAfter: BigNumberish
+  ];
+  export type OutputTuple = [
+    user: string,
+    amount: bigint,
+    balanceAfter: bigint
+  ];
+  export interface OutputObject {
+    user: string;
+    amount: bigint;
+    balanceAfter: bigint;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
 }
 
 export namespace DepositEvent {
@@ -156,6 +189,24 @@ export namespace OwnershipTransferredEvent {
   export interface OutputObject {
     previousOwner: string;
     newOwner: string;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
+}
+
+export namespace TradePayoutEvent {
+  export type InputTuple = [
+    user: AddressLike,
+    amount: BigNumberish,
+    txHash: string
+  ];
+  export type OutputTuple = [user: string, amount: bigint, txHash: string];
+  export interface OutputObject {
+    user: string;
+    amount: bigint;
+    txHash: string;
   }
   export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
   export type Filter = TypedDeferredTopicFilter<Event>;
@@ -300,6 +351,18 @@ export interface Vault extends BaseContract {
 
   setRelay: TypedContractMethod<[relay_: AddressLike], [void], "nonpayable">;
 
+  settleTradeAndPayout: TypedContractMethod<
+    [
+      user: AddressLike,
+      pair: BytesLike,
+      qty: BigNumberish,
+      side: BigNumberish,
+      txHash: string
+    ],
+    [void],
+    "nonpayable"
+  >;
+
   settleTradeRecord: TypedContractMethod<
     [
       user: AddressLike,
@@ -378,6 +441,19 @@ export interface Vault extends BaseContract {
     nameOrSignature: "setRelay"
   ): TypedContractMethod<[relay_: AddressLike], [void], "nonpayable">;
   getFunction(
+    nameOrSignature: "settleTradeAndPayout"
+  ): TypedContractMethod<
+    [
+      user: AddressLike,
+      pair: BytesLike,
+      qty: BigNumberish,
+      side: BigNumberish,
+      txHash: string
+    ],
+    [void],
+    "nonpayable"
+  >;
+  getFunction(
     nameOrSignature: "settleTradeRecord"
   ): TypedContractMethod<
     [
@@ -405,6 +481,13 @@ export interface Vault extends BaseContract {
   ): TypedContractMethod<[amount: BigNumberish], [void], "nonpayable">;
 
   getEvent(
+    key: "BalanceDebited"
+  ): TypedContractEvent<
+    BalanceDebitedEvent.InputTuple,
+    BalanceDebitedEvent.OutputTuple,
+    BalanceDebitedEvent.OutputObject
+  >;
+  getEvent(
     key: "Deposit"
   ): TypedContractEvent<
     DepositEvent.InputTuple,
@@ -417,6 +500,13 @@ export interface Vault extends BaseContract {
     OwnershipTransferredEvent.InputTuple,
     OwnershipTransferredEvent.OutputTuple,
     OwnershipTransferredEvent.OutputObject
+  >;
+  getEvent(
+    key: "TradePayout"
+  ): TypedContractEvent<
+    TradePayoutEvent.InputTuple,
+    TradePayoutEvent.OutputTuple,
+    TradePayoutEvent.OutputObject
   >;
   getEvent(
     key: "TradeRequested"
@@ -434,6 +524,17 @@ export interface Vault extends BaseContract {
   >;
 
   filters: {
+    "BalanceDebited(address,uint256,uint256)": TypedContractEvent<
+      BalanceDebitedEvent.InputTuple,
+      BalanceDebitedEvent.OutputTuple,
+      BalanceDebitedEvent.OutputObject
+    >;
+    BalanceDebited: TypedContractEvent<
+      BalanceDebitedEvent.InputTuple,
+      BalanceDebitedEvent.OutputTuple,
+      BalanceDebitedEvent.OutputObject
+    >;
+
     "Deposit(address,address,uint256)": TypedContractEvent<
       DepositEvent.InputTuple,
       DepositEvent.OutputTuple,
@@ -454,6 +555,17 @@ export interface Vault extends BaseContract {
       OwnershipTransferredEvent.InputTuple,
       OwnershipTransferredEvent.OutputTuple,
       OwnershipTransferredEvent.OutputObject
+    >;
+
+    "TradePayout(address,uint256,string)": TypedContractEvent<
+      TradePayoutEvent.InputTuple,
+      TradePayoutEvent.OutputTuple,
+      TradePayoutEvent.OutputObject
+    >;
+    TradePayout: TypedContractEvent<
+      TradePayoutEvent.InputTuple,
+      TradePayoutEvent.OutputTuple,
+      TradePayoutEvent.OutputObject
     >;
 
     "TradeRequested(address,bytes32,uint256,uint8,uint256)": TypedContractEvent<

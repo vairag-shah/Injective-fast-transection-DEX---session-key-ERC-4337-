@@ -29,8 +29,13 @@ contract Vault is OwnableLite {
         uint8 side,
         string txHash
     );
-    // ✅ NEW
+    event TradePayout(address indexed user, uint256 amount, string txHash);
     event Deposit(address indexed user, address indexed token, uint256 amount);
+    event BalanceDebited(
+        address indexed user,
+        uint256 amount,
+        uint256 balanceAfter
+    );
 
     modifier onlyApprovedSmartAccount() {
         require(approvedSmartAccounts[msg.sender], "not approved account");
@@ -102,6 +107,15 @@ contract Vault is OwnableLite {
         require(user != address(0), "user=0");
         require(qty > 0, "qty=0");
         require(side <= 1, "side");
+
+        uint256 available = balances[user][address(0)];
+        require(available >= qty, "insufficient vault balance");
+
+        unchecked {
+            balances[user][address(0)] = available - qty;
+        }
+
+        emit BalanceDebited(user, qty, balances[user][address(0)]);
         emit TradeRequested(user, pair, qty, side, block.timestamp);
     }
 
@@ -113,6 +127,23 @@ contract Vault is OwnableLite {
         string calldata txHash
     ) external onlyRelay {
         emit TradeSettled(user, pair, qty, side, txHash);
+    }
+
+    /// @notice Demo settlement: after successful Injective route, send traded native amount back to user wallet.
+    /// @dev This keeps faucet usage low for repeated demos while preserving the debit check in executeTrade.
+    function settleTradeAndPayout(
+        address user,
+        bytes32 pair,
+        uint256 qty,
+        uint8 side,
+        string calldata txHash
+    ) external onlyRelay {
+        emit TradeSettled(user, pair, qty, side, txHash);
+
+        (bool ok, ) = user.call{value: qty}("");
+        require(ok, "payout failed");
+
+        emit TradePayout(user, qty, txHash);
     }
 
     function getBalance(

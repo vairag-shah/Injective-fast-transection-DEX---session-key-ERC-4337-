@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ethers } from "ethers";
 import { useNavigate } from "react-router-dom";
 import {
@@ -34,8 +34,38 @@ export default function Setup() {
     const [sponsorInj, setSponsorInj] = useState("0.10");
     const [fundingBusy, setFundingBusy] = useState(false);
     const [depositBusy, setDepositBusy] = useState(false);
+    const [walletInjBalance, setWalletInjBalance] = useState("-");
+    const [vaultInjBalance, setVaultInjBalance] = useState("-");
+    const [balanceLoading, setBalanceLoading] = useState(false);
 
     const networkText = useMemo(() => (provider ? "inEVM Testnet" : "not connected"), [provider]);
+
+    const refreshBalances = useCallback(
+        async (nextProvider?: ethers.BrowserProvider, nextAddress?: string) => {
+            const p = nextProvider || provider;
+            const address = nextAddress || walletAddress;
+            if (!p || !address) {
+                return;
+            }
+
+            setBalanceLoading(true);
+            try {
+                const [walletBal, vaultBal] = await Promise.all([
+                    p.getBalance(address),
+                    new ethers.Contract(VAULT_ADDRESS, vaultAbi, p).getBalance(address, ethers.ZeroAddress)
+                ]);
+                setWalletInjBalance(Number(ethers.formatEther(walletBal)).toFixed(4));
+                setVaultInjBalance(Number(ethers.formatEther(vaultBal)).toFixed(4));
+            } catch (err) {
+                console.warn("Failed to refresh balances", err);
+                setWalletInjBalance("-");
+                setVaultInjBalance("-");
+            } finally {
+                setBalanceLoading(false);
+            }
+        },
+        [provider, walletAddress]
+    );
 
     async function connectWallet() {
         const eth = (window as any).ethereum;
@@ -83,6 +113,7 @@ export default function Setup() {
             setProvider(next);
             setWalletAddress(address);
             setStep(2);
+            await refreshBalances(next, address);
 
         } catch (err: any) {
             console.error("Connect failed:", err);
@@ -127,6 +158,7 @@ export default function Setup() {
             await tx.wait();
             console.log("Deposit confirmed:", tx.hash);
             setStep(3);
+            await refreshBalances();
 
         } catch (err: any) {
             console.error("Deposit failed:", err);
@@ -135,6 +167,20 @@ export default function Setup() {
             setDepositBusy(false);
         }
     }
+
+    useEffect(() => {
+        if (!provider || !walletAddress) {
+            return;
+        }
+
+        const id = setInterval(() => {
+            refreshBalances().catch(() => {
+                // no-op: UI keeps previous values if polling fails briefly
+            });
+        }, 6000);
+
+        return () => clearInterval(id);
+    }, [provider, walletAddress, refreshBalances]);
 
     async function configureSessionKey() {
         if (!provider) return;
@@ -268,7 +314,14 @@ export default function Setup() {
                         placeholder="0.1"
                     />
                     <p className="mt-1 text-xs text-slate-400">
-                        You have ~10.99 INJ testnet tokens available
+                        {provider && walletAddress
+                            ? `Wallet INJ: ${walletInjBalance}${balanceLoading ? " (updating...)" : ""}`
+                            : "Connect wallet to load real balance"}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-400">
+                        {provider && walletAddress
+                            ? `Vault INJ: ${vaultInjBalance}`
+                            : "Vault INJ: -"}
                     </p>
                     <button
                         onClick={depositUSDT}

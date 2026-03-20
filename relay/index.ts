@@ -14,13 +14,16 @@ app.use(express.json({ limit: "1mb" }));
 
 const PORT = Number(process.env.PORT || 8787);
 const INEVM_RPC_URL =
-    process.env.RELAY_RPC_URL ||
     process.env.RPC_PROXY_URL ||
+    process.env.RELAY_RPC_URL ||
     process.env.INEVM_RPC_URL ||
-    "";
+    "https://k8s.testnet.json-rpc.injective.network/";
 const WS_RPC_URL = process.env.WS_RPC_URL || "";
 const VAULT = process.env.VAULT_CONTRACT || "";
 const RELAY_SIGNER_EVM_PRIVATE_KEY = process.env.RELAY_SIGNER_EVM_PRIVATE_KEY || "";
+const LISTENER_RETRY_MS = Number(process.env.LISTENER_RETRY_MS || 10000);
+let listenerAttached = false;
+let listenerBooting = false;
 
 app.post("/api/submit-userop", async (req: any, res: any) => {
     try {
@@ -75,29 +78,56 @@ async function bootListener() {
     const vaultWriter = getVaultWriteContract(INEVM_RPC_URL, VAULT, signer);
 
     // ✅ pass INEVM_RPC_URL as first arg — listener ignores WS and uses HTTP
-    startVaultListener(INEVM_RPC_URL, VAULT, async ({ user, pair, qty, side }) => {
+    await startVaultListener(INEVM_RPC_URL, VAULT, async ({ user, pair, qty, side }) => {
         const knownPairs = ["INJ/USDT", "ETH/USDT", "BTC/USDT"];
         const pairText =
             knownPairs.find((p) => ethers.keccak256(ethers.toUtf8Bytes(p)) === pair) || "INJ/USDT";
 
-        const routed = await routeInjectiveSpotOrder({
-            pair: pairText,
-            qty: qty.toString(),
-            side
-        });
+        let settlementTag = "pending";
+        try {
+            const routed = await routeInjectiveSpotOrder({
+                pair: pairText,
+                qty: qty.toString(),
+                side
+            });
+            settlementTag = routed.txHash || "injective-pending";
+        } catch (error: any) {
+            const reason = (error?.message || "route-failed").slice(0, 80);
+            settlementTag = `route-failed:${reason}`;
+            console.warn(`Injective route failed, continuing with payout fallback: ${reason}`);
+        }
 
-        await vaultWriter.settleTradeRecord(user, pair, qty, side, routed.txHash || "pending");
+        const settleTx = await vaultWriter.settleTradeAndPayout(user, pair, qty, side, settlementTag);
+        console.log(`Settlement tx sent: ${settleTx.hash}`);
     });
+
+    listenerAttached = true;
+    console.log("Listener attached successfully");
+}
+
+async function ensureListenerAttached() {
+    if (listenerAttached || listenerBooting) {
+        return;
+    }
+
+    listenerBooting = true;
+    try {
+        await bootListener();
+    } catch (error: any) {
+        console.warn(`Listener startup failed (non-fatal): ${error?.message || error}`);
+        console.warn(`Retrying listener in ${LISTENER_RETRY_MS / 1000}s...`);
+    } finally {
+        listenerBooting = false;
+    }
 }
 
 app.listen(PORT, async () => {
     console.log(`relay listening on :${PORT}`);
-    try {
-        await bootListener();
-    } catch (error: any) {
-        // ✅ Non-fatal — relay HTTP endpoints still work without listener
-        console.warn(`Listener startup failed (non-fatal): ${error?.message || error}`);
-    }
+
+    await ensureListenerAttached();
+    setInterval(() => {
+        void ensureListenerAttached();
+    }, LISTENER_RETRY_MS);
 });
 
 // ✅ Catch ALL unhandled promise rejections — prevent relay from crashing
