@@ -6,12 +6,10 @@ import {
     PrivateKey
 } from "@injectivelabs/sdk-ts";
 
-const INDEXER_ENDPOINT = process.env.INJECTIVE_GRPC_ENDPOINT || "";
+const INDEXER_ENDPOINT = process.env.INJECTIVE_INDEXER_ENDPOINT || "https://testnet.sentry.exchange.grpc-web.injective.network";
 const INJECTIVE_NETWORK = process.env.INJECTIVE_NETWORK || "testnet";
 const RELAY_PK = process.env.RELAY_PRIVATE_KEY || "";
-const INJECTIVE_REST_ENDPOINT =
-    process.env.INJECTIVE_REST_ENDPOINT ||
-    "https://testnet.sentry.lcd.injective.network";
+const INJECTIVE_REST_ENDPOINT = process.env.INJECTIVE_REST_ENDPOINT || "https://testnet.sentry.lcd.injective.network";
 const INJECTIVE_GRPC_FALLBACKS = Array.from(
     new Set(
         [
@@ -134,7 +132,7 @@ export async function routeInjectiveSpotOrder(args: {
                     privateKey,
                     network: INJECTIVE_NETWORK as any,
                     endpoints: {
-                        indexer: grpcEndpoint,
+                        indexer: INDEXER_ENDPOINT,
                         grpc: grpcEndpoint,
                         rest: restEndpoint
                     }
