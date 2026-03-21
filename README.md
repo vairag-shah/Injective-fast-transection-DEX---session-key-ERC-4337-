@@ -1,10 +1,10 @@
-# 👻 Phantom DEX - Injective EVM Testnet
+#  InstaInjective - Instant Tred on Injective EVM Testnet
 
 A decentralized exchange (DEX) built on Injective's automatically scalable EVM infrastructure with **ERC-4337 Account Abstraction**, **Session Key Permissions**, and **Gasless Transactions**.
 
 ---
 
-## 🚀 Quick Start (Windows / PowerShell)
+##  Quick Start (Windows / PowerShell)
 
 If you are a developer looking to set up and run the DEX locally on a Windows machine, follow these precise PowerShell commands.
 
