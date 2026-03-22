@@ -46,10 +46,10 @@ export default function Terminal() {
             setBalanceLoading(true);
             try {
                 const vaultBal = await new ethers.Contract(
-                    VAULT_ADDRESS,
+                    ethers.getAddress(VAULT_ADDRESS),
                     vaultAbi,
                     p,
-                ).getBalance(address, ethers.ZeroAddress);
+                ).getBalance(ethers.getAddress(address), ethers.ZeroAddress);
                 setVaultInjBalance(Number(ethers.formatEther(vaultBal)));
             } catch (err) {
                 console.warn("Failed to refresh balances", err);
