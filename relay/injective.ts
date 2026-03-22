@@ -35,10 +35,19 @@ export async function fetchMarketIds(): Promise<MarketMap> {
     const result: any = await indexer.fetchMarkets();
     const markets: any[] = result?.markets || [];
 
-    const mapped: MarketMap = {};
+    const mapped: MarketMap = {
+        "INJ/USDT": "0x0611780ba69656949525013d947714300f5d40b15da08d0e0ebaf260655d8f6f",
+        "BTC/USDT": "0x4ca0f92fc28be0c2d6150201c0f1acabc8e348f0cd6992d9d1abfceaf48476d0",
+        "ETH/USDT": "0x6f91ddf3dc25d88f61ec4d979fa45be2013f9f8c14a2a1b948f93630f9d984cf"
+    };
+
     for (const market of markets) {
-        const pair = `${market.baseTokenMeta?.symbol}/${market.quoteTokenMeta?.symbol}`;
-        mapped[pair] = market.marketId;
+        let base = market.baseTokenMeta?.symbol;
+        let quote = market.quoteTokenMeta?.symbol;
+        if (quote === 'peggyUSDT' || quote === 'USDTkv') quote = 'USDT';
+        if (base && quote) {
+            mapped[`${base}/${quote}`] = market.marketId;
+        }
     }
 
     return mapped;
