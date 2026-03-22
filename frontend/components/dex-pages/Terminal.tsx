@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ethers } from "ethers";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, YAxis } from "recharts";
 import AnimatedGenerateButton from "@/components/ui/animated-generate-button-shadcn-tailwind";
+import { pollOrderStatus } from "@/lib/injective";
 
 type TradeFeedItem = {
     side: "BUY" | "SELL";
@@ -15,6 +16,7 @@ type TradeFeedItem = {
     ts: number;
     status: "confirmed" | "pending";
     txHash?: string | null;
+    userOpHash?: string;
 };
 
 const PAIRS = ["INJ/USDT", "ETH/USDT", "BTC/USDT", "BTC/ETH", "BTC/INJ"];
@@ -95,9 +97,50 @@ export default function Terminal() {
                         : 5;
         return prices.map((p, i) => ({
             name: i,
-            price: p + Math.sin(i / factor) * 0.1, // Subtly vary price points to look different
+            price: p + Math.sin(i / factor) * 0.1,
         }));
     }, [prices, timeframe]);
+
+    useEffect(() => {
+        const history = JSON.parse(
+            sessionStorage.getItem("phantom_trade_history") || "[]",
+        );
+        setFeed(history);
+    }, []);
+
+    // Foreground/Background polling for pending transactions in Terminal feed
+    useEffect(() => {
+        const pending = feed
+            .filter(tx => (tx.status === "pending" || !tx.txHash) && tx.userOpHash);
+
+        if (pending.length === 0) return;
+
+        const interval = setInterval(async () => {
+            let changed = false;
+            const newFeed = [...feed];
+
+            await Promise.all(newFeed.map(async (tx, idx) => {
+                if ((tx.status === "pending" || !tx.txHash) && tx.userOpHash) {
+                    try {
+                        const res = await pollOrderStatus(tx.userOpHash);
+                        if (res.status === "confirmed" && res.txHash) {
+                            newFeed[idx] = { ...tx, status: "confirmed", txHash: res.txHash };
+                            changed = true;
+                        }
+                    } catch (e) {
+                        // ignore poll error
+                    }
+                }
+            }));
+
+            if (changed) {
+                setFeed(newFeed);
+                sessionStorage.setItem("phantom_trade_history", JSON.stringify(newFeed.slice(0, 100)));
+            }
+        }, 5000);
+
+        return () => clearInterval(interval);
+    }, [feed]);
 
     async function runTrade(side: 0 | 1, qtyText: string) {
         const eth = (window as any).ethereum;
@@ -137,6 +180,7 @@ export default function Terminal() {
                 ts: Date.now(),
                 status: result.txHash ? "confirmed" : "pending",
                 txHash: result.txHash,
+                userOpHash: result.userOpHash, // Store userOpHash for polling
             };
 
             setTradesToday((x) => x + 1);
@@ -145,7 +189,7 @@ export default function Terminal() {
             const history = JSON.parse(
                 sessionStorage.getItem("phantom_trade_history") || "[]",
             );
-            history.unshift({ ...item, pair, txHash: result.txHash, gas: 0 });
+            history.unshift({ ...item, pair, txHash: result.txHash, userOpHash: result.userOpHash, gas: 0 });
             sessionStorage.setItem(
                 "phantom_trade_history",
                 JSON.stringify(history.slice(0, 100)),

@@ -5,6 +5,7 @@ import { SMART_ACCOUNT_FACTORY, VAULT_ADDRESS, factoryAbi, smartAccountAbi, vaul
 import { useSessionKey } from "@/hooks/useSessionKey";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { pollOrderStatus } from "@/lib/injective";
 
 type HistoryRow = {
     pair: string;
@@ -14,6 +15,7 @@ type HistoryRow = {
     ts: number;
     status: "confirmed" | "pending";
     txHash?: string | null;
+    userOpHash?: string;
 };
 
 export default function Portfolio() {
@@ -68,6 +70,41 @@ export default function Portfolio() {
         }, 8000);
         return () => clearInterval(id);
     }, [walletAddress, refreshBalances]);
+
+    // Background polling for pending transactions
+    useEffect(() => {
+        const pendingTxHashes = history
+            .filter(tx => (tx.status === "pending" || !tx.txHash) && tx.userOpHash)
+            .map(tx => tx.userOpHash);
+
+        if (pendingTxHashes.length === 0) return;
+
+        const interval = setInterval(async () => {
+            let changed = false;
+            const newHistory = [...history];
+
+            await Promise.all(newHistory.map(async (tx, idx) => {
+                if ((tx.status === "pending" || !tx.txHash) && tx.userOpHash) {
+                    try {
+                        const res = await pollOrderStatus(tx.userOpHash);
+                        if (res.status === "confirmed" && res.txHash) {
+                            newHistory[idx] = { ...tx, status: "confirmed", txHash: res.txHash };
+                            changed = true;
+                        }
+                    } catch (e) {
+                        console.warn("Poll failed for", tx.userOpHash, e);
+                    }
+                }
+            }));
+
+            if (changed) {
+                setHistory(newHistory);
+                sessionStorage.setItem("phantom_trade_history", JSON.stringify(newHistory.slice(0, 100)));
+            }
+        }, 5000);
+
+        return () => clearInterval(interval);
+    }, [history]);
 
     const pnl = useMemo(() => history.reduce((a, x) => a + (x.side === "BUY" ? -x.qty * x.price * 0.01 : x.qty * x.price * 0.01), 0), [history]);
 
